@@ -72,7 +72,7 @@ Create a `.env` file locally (never commit it):
 
 ```env
 DISCORD_TOKEN=your_bot_token
-DISCORD_ID=your_application_id
+CLIENT_ID=your_application_id
 ```
 
 An example file is provided as `.env.example`.
