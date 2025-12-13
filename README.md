@@ -138,16 +138,6 @@ To avoid CPU overload:
 
 ---
 
-## ☁️ Hosting Recommendations
-
-Best platforms for audio‑heavy bots:
-- **Fly.io** (Free tier, no sleep)
-- **Koyeb** (Free tier, Docker support)
-
-Avoid serverless platforms that suspend background processes.
-
----
-
 ## ⭐ Credits
 
 - discord.js
