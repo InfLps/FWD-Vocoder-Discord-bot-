@@ -79,16 +79,6 @@ An example file is provided as `.env.example`.
 
 ---
 
-## 🛠 Installation
-
-```bash
-git clone https://github.com/yourusername/discord-vocoder-bot.git
-cd discord-vocoder-bot
-npm install
-```
-
----
-
 ## 📡 Register Slash Commands
 
 Run once (or whenever commands change):
