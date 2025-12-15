@@ -99,7 +99,7 @@ node index.js
 
 You should see:
 ```
-Bot online as YourBotName
+Bot online as FWD Vocoder
 Slash commands registered.
 ```
 
