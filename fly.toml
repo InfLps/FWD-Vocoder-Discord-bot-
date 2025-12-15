@@ -1,23 +1,12 @@
 app = "fwd-vocoder-discord-bot"
-primary_region = "fra"  # or your preferred region
+primary_region = "fra"
 
 kill_signal = "SIGINT"
 kill_timeout = "5s"
 
-[[services]]
-  internal_port = 8080
-  protocol = "tcp"
-  # no HTTP handlers needed since bot doesn't expose web UI
+[build]
 
-  auto_start_machines = true
-  auto_stop_machines = false  # keep bot always running
-  min_machines_running = 1    # 1 ensures it's up
-
-  [services.concurrency]
-    type = "connections"
-    soft_limit = 1
-    hard_limit = 1
-
-  # optional: if you want no public connectivity
-  [[services.ports]]
-    port = 0
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1
