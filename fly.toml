@@ -1,15 +1,23 @@
-# fly.toml app configuration file generated for fwd-vocoder-discord-bot on 2025-12-15T13:16:56Z
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
+app = "fwd-vocoder-discord-bot"
+primary_region = "fra"  # or your preferred region
 
-app = 'fwd-vocoder-discord-bot'
-primary_region = 'fra'
+kill_signal = "SIGINT"
+kill_timeout = "5s"
 
-[build]
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  # no HTTP handlers needed since bot doesn't expose web UI
 
-[[vm]]
-  memory = '1gb'
-  cpu_kind = 'shared'
-  cpus = 1
-  memory_mb = 1024
+  auto_start_machines = true
+  auto_stop_machines = false  # keep bot always running
+  min_machines_running = 1    # 1 ensures it's up
+
+  [services.concurrency]
+    type = "connections"
+    soft_limit = 1
+    hard_limit = 1
+
+  # optional: if you want no public connectivity
+  [[services.ports]]
+    port = 0
