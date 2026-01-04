@@ -52,16 +52,19 @@ It combines a **modulator** (voice) and a **carrier** (synth or noise) to create
 
 ## 🛠️ Tech Stack
 - Core Runtime
+
 ![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![Discord.js](https://img.shields.io/badge/Discord.js-7289DA?style=for-the-badge&logo=discord&logoColor=white)
 
 - Audio Processing
+
 ![FFmpeg](https://img.shields.io/badge/FFmpeg-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)
 ![Node Web Audio API](https://img.shields.io/badge/Node_Web_Audio_API-FF6B6B?style=for-the-badge&logo=node.js&logoColor=white)
 ![audio-decode](https://img.shields.io/badge/audio--decode-4A90E2?style=for-the-badge&logo=waves&logoColor=white)
 ![wav-encoder](https://img.shields.io/badge/wav--encoder-8E44AD?style=for-the-badge&logo=waveform&logoColor=white)
 
 - Utilities
+
 ![UUID](https://img.shields.io/badge/UUID-FFA500?style=for-the-badge&logo=uuid&logoColor=white)
 ![dotenv](https://img.shields.io/badge/dotenv-ECD53F?style=for-the-badge&logo=dotenv&logoColor=black)
 ![node-fetch](https://img.shields.io/badge/node--fetch-026E00?style=for-the-badge&logo=hyper&logoColor=white)
