@@ -86,7 +86,7 @@ It combines a **modulator** (voice) and a **carrier** (synth or noise) to create
 
 ---
 
-## 📦 Installation
+## Installation
 
 1. **Clone the repository**
 
@@ -121,7 +121,7 @@ It combines a **modulator** (voice) and a **carrier** (synth or noise) to create
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```text
 FWD-Vocoder-Discord-bot-/
@@ -140,7 +140,7 @@ FWD-Vocoder-Discord-bot-/
 
 ---
 
-## 🤖 Bot Commands
+## Bot Commands
 
 ### `/vocode`
 
@@ -184,7 +184,7 @@ Apply a 16‑band vocoder effect to two audio or video files.
 
 ---
 
-## 🔧 Technical Details
+##  Technical Details
 
 ### Vocoder Engine
 
@@ -203,7 +203,7 @@ Apply a 16‑band vocoder effect to two audio or video files.
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome!
 
@@ -224,41 +224,29 @@ Contributions are welcome!
 
 ---
 
-## 🧪 Development Setup
+## Setup
 
 ```bash
 npm install
-
-echo "DISCORD_TOKEN=test_token" > .env
-
 node index.js
 ```
 
 ---
 
-## 📄 License
+## License
 
 Distributed under the **MIT License**. See `LICENSE` for details.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Discord.js
 - Node Web Audio API
 - FFmpeg
-- All contributors ❤️
-
----
-
-## 📞 Support & Issues
-
-- 🐛 **Bug Reports:** GitHub Issues
-- 💡 **Feature Requests:** Open an issue with the `enhancement` label
-- ❓ **Questions:** Check existing issues or open a new one
 
 ---
 
 ⭐ If you find this project useful, please give it a star!\
-Made with ❤️ by **InfLps**
+Made with ❤️ by **FWDLps**
 
