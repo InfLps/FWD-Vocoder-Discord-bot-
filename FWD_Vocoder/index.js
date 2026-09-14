@@ -1,10 +1,6 @@
-/**Discord Bot for High-Quality Vocoder Processing
- * Now with Video and M4A Support!
- * Supports: MP3, WAV, M4A, OGG, FLAC, MP4, MOV, MKV, AVI, etc.
- * Uses FFmpeg to convert any audio/video input to WAV before processing.
- * Author: InfLps (FWDFactory)
- * Date: 2025-12-18
- * License: MIT
+/**
+ * Discord Bot: FWD Vocoder
+ * Author: FWDLps (FWDFactoryNetwork)
  */
 
 import {
@@ -12,216 +8,251 @@ import {
   GatewayIntentBits,
   SlashCommandBuilder,
   REST,
-  Routes
-} from "discord.js";                                        // Discord.js v14
-import { config } from "dotenv";                            // For environment variable management
-import { promises as fs } from "fs";                        // File system promises API
-import path from "path";                                    // Path utilities
-import { v4 as uuidv4 } from "uuid";                        // For generating unique filenames
-import fetch from "node-fetch";                             // For fetching audio files
-import ffmpeg from "fluent-ffmpeg";                         // FFmpeg wrapper
-import ffmpegPath from "ffmpeg-static";                     // Static FFmpeg binary
-import { runVocoder } from "./vocoder/vocoderEngine.js";    // Vocoder engine
+  Routes,
+  ActivityType
+} from "discord.js";
+import { config } from "dotenv";
+import { promises as fs } from "fs";
+import path from "path";
+import { v4 as uuidv4 } from "uuid";
+import fetch from "node-fetch";
+import ffmpeg from "fluent-ffmpeg";
+import ffmpegPath from "ffmpeg-static";
+import { runVocoder } from "./vocoder/vocoderEngine.js";
 
-ffmpeg.setFfmpegPath(ffmpegPath);                           // Set FFmpeg binary path
-config();                                                   // Initialize dotenv
+ffmpeg.setFfmpegPath(ffmpegPath);
+config();
 
-const { writeFile, unlink, mkdir, readFile, readdir, stat } = fs; // Destructure needed fs functions
-const TOKEN = process.env.DISCORD_TOKEN;                    // Discord Bot Token
-const TEMP_DIR = path.join(process.cwd(), "temp");          // Temporary directory for audio files
+const { writeFile, unlink, mkdir, readFile, readdir, stat } = fs;
+const TOKEN = process.env.DISCORD_TOKEN;
+const TOPGG_TOKEN = process.env.TOPGG_TOKEN;
+const TEMP_DIR = path.join(process.cwd(), "temp");
 
-// QUEUE SYSTEM
-const processQueue = [];                                    // Task queue
-let isProcessing = false;                                   // Processing flag
+//COOLDOWN CONFIG
+const COOLDOWN_MS = Number(process.env.COOLDOWN_MS) || 22000;
+const cooldowns = new Map();
 
-// ENSURE TEMP DIRECTORY EXISTS
+//CONSOLE-ONLY ANNOUNCEMENT MODE
+const ANNOUNCE = process.env.ANNOUNCE === "true" || process.argv.includes("--announce");
+
+function announce(type, message) {
+  if (!ANNOUNCE) return;
+  const timestamp = new Date().toISOString();
+  console.log(`[ANNOUNCE][${type.toUpperCase()}] ${timestamp} — ${message}`);
+}
+
+const processQueue = [];
+let isProcessing = false;
+
+//PRESENCE & TOP.GG UPDATER (OPT)
+async function updateBotPresence(client) {
+  if (!client.user) return;
+  const serverCount = client.guilds.cache.size;
+
+  client.user.setActivity(`over ${serverCount} servers`, {
+    type: ActivityType.Watching
+  });
+
+  if (TOPGG_TOKEN) {
+    try {
+      await fetch(`https://top.gg/api/bots/${client.user.id}/stats`, {
+        method: "POST",
+        headers: { Authorization: TOPGG_TOKEN, "Content-Type": "application/json" },
+        body: JSON.stringify({ server_count: serverCount }),
+      });
+      announce("stats", `Top.gg stats updated (${serverCount} servers).`);
+    } catch (err) {
+      console.error(`[Top.gg] Error:`, err.message);
+      announce("error", `Top.gg stats update failed: ${err.message}`);
+    }
+  }
+}
+
+//FILE UTILITIES
 async function ensureTempDir() {
   await mkdir(TEMP_DIR, { recursive: true });
-}                                                           // Ensure temp directory exists
+}
 
-// CLEAN ORPHANED TEMP FILES ON STARTUP
 async function cleanTempDir() {
   try {
     const files = await readdir(TEMP_DIR);
     const now = Date.now();
-
     for (const file of files) {
       const fullPath = path.join(TEMP_DIR, file);
       const fileStat = await stat(fullPath);
-
-      // Delete files older than 10 minutes
       if (now - fileStat.mtimeMs > 10 * 60 * 1000) {
         await unlink(fullPath).catch(() => {});
       }
     }
-  } catch (e) {
-    console.warn("Temp cleanup skipped:", e.message);
-  }
+  } catch (e) {}
 }
 
-// CONVERT ANY MEDIA TO WAV BUFFER
-async function downloadAndConvert(attachmentUrl, originalFilename) {
-  const uniqueId = uuidv4();                                // Unique ID for temp files  
-  const ext = path.extname(originalFilename);               // Original file extension
-  const inputPath = path.join(TEMP_DIR, `raw_${uniqueId}${ext}`); // Temp input file path
-  const outputPath = path.join(TEMP_DIR, `clean_${uniqueId}.wav`); // Temp output WAV file path
-  const res = await fetch(attachmentUrl);                   // Fetch the attachment
-  const buffer = await res.arrayBuffer();                   // Read as ArrayBuffer
-  await writeFile(inputPath, Buffer.from(buffer));          // Save to temp input file
+async function downloadAndConvert(attachmentUrl, originalFilename, limitDuration = null) {
+  const uniqueId = uuidv4();
+  const ext = path.extname(originalFilename) || ".tmp";
+  const inputPath = path.join(TEMP_DIR, `raw_${uniqueId}${ext}`);
+  const outputPath = path.join(TEMP_DIR, `clean_${uniqueId}.wav`);
 
-  return new Promise((resolve, reject) => {                 // Return a promise for async handling
-    ffmpeg(inputPath)
-      .toFormat('wav')                                      // Convert to WAV format
-      .audioFrequency(48000)                                // Standardize sample rate
-      .on('error', async (err) => {                         // Handle conversion errors
-        await unlink(inputPath).catch(() => {});            // Ignore unlink errors
+  const res = await fetch(attachmentUrl);
+  if (!res.ok) {
+    throw new Error(`Failed to download attachment (HTTP ${res.status})`);
+  }
+  const buffer = await res.arrayBuffer();
+  await writeFile(inputPath, Buffer.from(buffer));
+
+  return new Promise((resolve, reject) => {
+    const command = ffmpeg().input(inputPath);
+
+    if (limitDuration) {
+      command.inputOptions(['-stream_loop', '-1']);
+      command.duration(limitDuration + 0.5);
+    }
+
+    command
+      .toFormat('wav')
+      .audioFrequency(48000)
+      .on('error', async (err) => {
+        await unlink(inputPath).catch(() => {});
         await unlink(outputPath).catch(() => {});
-        reject(err);                                        // Reject promise on error
+        reject(err);
       })
-      .on('end', async () => {                              // On successful conversion
+      .on('end', async () => {
         try {
-          const wavBuffer = await readFile(outputPath);     // Read converted WAV file
-          await unlink(inputPath);                          // Clean up input file
-          await unlink(outputPath);                         // Clean up output file
-          resolve(wavBuffer);                               // Resolve promise with WAV buffer
-        } catch (e) {                                       // Handle read/unlink errors
-          reject(e);                                        // Reject promise on error
-        }
+          const wavBuffer = await readFile(outputPath);
+          await unlink(inputPath).catch(() => {});
+          await unlink(outputPath).catch(() => {});
+          resolve(wavBuffer);
+        } catch (e) { reject(e); }
       })
-      .save(outputPath);                                    // Save converted file
-  });                                                       // End of Promise
-}                                                           // End of downloadAndConvert function
+      .save(outputPath);
+  });
+}
 
-// QUEUE PROCESSING FUNCTION
-async function runQueue() {                                 // Simple async queue runner
-  if (isProcessing || processQueue.length === 0) return;    // Early exit if already processing or queue empty
-  isProcessing = true;                                      // Set processing flag
-
-  const task = processQueue.shift();                        // Get next task
-  try {
-    await task();                                           // Execute task
-  } catch (e) {                                             // Handle task errors
-    console.error("Queue task error:", e);                  // Log errors
-  } finally {                                               // Finalize
-    isProcessing = false;                                   // Reset processing flag
-    if (processQueue.length > 0) setImmediate(runQueue);    // Process next task immediately
+//QUEUE HANDLER
+async function runQueue() {
+  if (isProcessing || processQueue.length === 0) return;
+  isProcessing = true;
+  const task = processQueue.shift();
+  try { await task(); } catch (e) { console.error("Queue error:", e); }
+  finally {
+    isProcessing = false;
+    if (processQueue.length > 0) setImmediate(runQueue);
   }
 }
 
-// DISCORD BOT SETUP
+//DISCORD CLIENT
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
-});                                                         // Discord Client
+});
 
-// COMMAND REGISTRATION
 client.once("ready", async () => {
-  await ensureTempDir();                                    // Ensure temp directory exists
-  await cleanTempDir();                                     // Clean orphaned temp files
-  console.log(`Bot online as ${client.user.tag}`);          // Log bot online status
+  await ensureTempDir();
+  await cleanTempDir();
+  console.log(`Logged in as ${client.user.tag}`);
+  announce("startup", `Bot logged in as ${client.user.tag}.`);
+  await updateBotPresence(client);
+  setInterval(() => updateBotPresence(client), 30 * 60 * 1000);
 
   const commands = [
     new SlashCommandBuilder()
       .setName("vocode")
-      .setDescription("Apply robot vocoder (Supports video and audio attachments)")
-      .addAttachmentOption((o) =>
-        o.setName("modulator").setDescription("Voice (Video or Audio accepted)").setRequired(true)
-      )
-      .addAttachmentOption((o) =>
-        o.setName("carrier").setDescription("Synth/Noise (Video or Audio accepted)").setRequired(true)
-      )
-      .addIntegerOption((o) => 
-        o.setName("width")
-         .setDescription("Bandwidth (0-100). Default: 50")
-         .setMinValue(0)
-         .setMaxValue(100)
-         .setRequired(false)
-      )
+      .setDescription("Apply robot vocoder")
+      .addAttachmentOption(o => o.setName("modulator").setDescription("Voice").setRequired(true))
+      .addAttachmentOption(o => o.setName("carrier").setDescription("Synth").setRequired(true))
+      .addIntegerOption(o => o.setName("width").setDescription("Bandwidth (0-100)").setMinValue(0).setMaxValue(100))
       .toJSON(),
-  ];                                                        // Command definitions
+  ];
 
-  const rest = new REST({ version: "10" }).setToken(TOKEN); // REST client for Discord API
+  const rest = new REST({ version: "10" }).setToken(TOKEN);
   try {
-    await rest.put(Routes.applicationCommands(client.user.id), { body: commands }); // Register commands globally 
-    console.log("Slash commands registered.");              // Success log  
-  } catch (err) {                                           // Error handling  
-    console.error("Command registration failed:", err);     // Log error
+    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+    console.log("Commands registered.");
+    announce("startup", "Slash commands registered successfully.");
+  } catch (err) {
+    console.error(err);
+    announce("error", `Command registration failed: ${err.message}`);
   }
-});                                                         // Bot ready event
+});
 
-// COMMAND HANDLER
-client.on("interactionCreate", async (interaction) => {     // Handle interactions
-  if (!interaction.isChatInputCommand()) return;            // Only handle chat input commands
-  if (interaction.commandName !== "vocode") return;         // Only handle /vocode
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isChatInputCommand() || interaction.commandName !== "vocode") return;
 
-  await interaction.deferReply();                           // Acknowledge command
+  //COOLDOWN CHECK
+  const userId = interaction.user.id;
+  const now = Date.now();
+  const lastUsed = cooldowns.get(userId);
 
-  // Enqueue processing task
-  processQueue.push(async () => {                           // Enqueue processing task
-    let outPath = null;                                     // Output file path for cleanup
-    try {                                                   // Main processing block
-      const mod = interaction.options.getAttachment("modulator"); 
-      const car = interaction.options.getAttachment("carrier"); // Get attachments
-      const widthVal = interaction.options.getInteger("width") ?? 50; // Get width or default to 50
-      const validMime = (type) => type && (type.startsWith("audio/") || type.startsWith("video/")); // Validate MIME types
+  if (lastUsed && now - lastUsed < COOLDOWN_MS) {
+    const remaining = ((COOLDOWN_MS - (now - lastUsed)) / 1000).toFixed(1);
+    announce("cooldown", `${interaction.user.tag} hit cooldown (${remaining}s remaining).`);
+    await interaction.reply({
+      content: `⏳ Please wait **${remaining}s** before processing another file.`,
+      ephemeral: true,
+    }).catch(() => {});
+    return;
+  }
+  cooldowns.set(userId, now);
 
-      if (!validMime(mod.contentType) || !validMime(car.contentType)) { // Validate attachments
-        throw new Error("Files must be Audio or Video.");   // Error if invalid types
-      }
+  await interaction.deferReply();
+  announce("command", `${interaction.user.tag} queued a /vocode request.`);
 
-      await interaction.editReply("📥 Downloading & Converting Media...");
+  processQueue.push(async () => {
+    let outPath = null;
+    try {
+      const mod = interaction.options.getAttachment("modulator");
+      const car = interaction.options.getAttachment("carrier");
+      const widthVal = interaction.options.getInteger("width") ?? 50;
+      const modBuffer = await downloadAndConvert(mod.url, mod.name);
+      const carBuffer = await downloadAndConvert(car.url, car.name, mod.duration);
 
-      // Download and convert both attachments to WAV buffers
-      const [modBuffer, carBuffer] = await Promise.all([
-        downloadAndConvert(mod.url, mod.name),
-        downloadAndConvert(car.url, car.name)
-      ]);                                                   // End Promise.all
+      const resultBuffer = await runVocoder(modBuffer, carBuffer, widthVal);
+      const fileName = `vocoded_${uuidv4()}.wav`;
+      outPath = path.join(TEMP_DIR, fileName);
+      await writeFile(outPath, resultBuffer);
 
-      await interaction.editReply("🎚 Processing Vocoder Engine...");
-
-      // The engine receives clean WAV buffers now, so it's happy
-      const resultBuffer = await runVocoder(modBuffer, carBuffer, widthVal); // Run vocoder engine
-
-      // Save result to temp file for sending
-      const fileName = `vocoded_${uuidv4()}.wav`;           // Unique output filename
-      outPath = path.join(TEMP_DIR, fileName);              // Full output path
-      await writeFile(outPath, resultBuffer);               // Write output file
-
-      // SEND AS BUFFER (prevents file lock issues)
-      const sendBuffer = Buffer.from(resultBuffer);         // Detached buffer copy
-
-      await interaction.editReply({                         // Send result back to user
-        content: `✅ **Vocoding complete!**\n🎛️ Width: ${widthVal}%`,
-        files: [{ attachment: sendBuffer, name: fileName }],
-      });                                                   // End editReply
-
-    } catch (err) {                                         // Error handling
-      console.error("Processing error:", err);              // Log error
-      try {
-        await interaction.editReply(`❌ Error: ${err.message}`); // Notify user of error
-      } catch (e) { }                                       // Ignore reply errors
-    } finally {                                             // Cleanup
-      if (outPath) {
-        await unlink(outPath).catch(() => {});              // Immediate cleanup (safe)
-      }
+      await interaction.editReply({
+        content: `✅ **Vocoding complete!** (Width: ${widthVal}%)`,
+        files: [{ attachment: resultBuffer, name: fileName }],
+      });
+      announce("success", `Vocoding completed for ${interaction.user.tag}.`);
+    } catch (err) {
+      console.error(err);
+      announce("error", `Vocoding failed for ${interaction.user.tag}: ${err.message}`);
+      await interaction.editReply(`❌ Error: ${err.message}`).catch(() => {});
+    } finally {
+      if (outPath) await unlink(outPath).catch(() => {});
     }
-  });                                                       // End of queued task
+  });
+  runQueue();
+});
 
-  runQueue();                                               // Start processing the queue
-});                                                         // End interactionCreate handler
+client.on("guildCreate", (guild) => {
+  announce("guild", `Joined new server: ${guild.name} (${guild.id}).`);
+  updateBotPresence(client);
+});
+client.on("guildDelete", (guild) => {
+  announce("guild", `Removed from server: ${guild.name} (${guild.id}).`);
+  updateBotPresence(client);
+});
 
-// CLEAN TEMP FILES ON EXIT
-async function shutdownCleanup() {
+async function shutdown() {
+  console.log("\n[Shutdown] Cleaning up...");
+  announce("shutdown", "Bot is shutting down, cleaning temp files.");
+  const forceQuit = setTimeout(() => process.exit(1), 3000);
   try {
-    const files = await readdir(TEMP_DIR);
+    if (client) client.destroy();
+    const files = await readdir(TEMP_DIR).catch(() => []);
     for (const file of files) {
       await unlink(path.join(TEMP_DIR, file)).catch(() => {});
     }
-  } catch {}
+    clearTimeout(forceQuit);
+    process.exit(0);
+  } catch (e) {
+    process.exit(1);
+  }
 }
 
-process.on("SIGINT", shutdownCleanup);
-process.on("SIGTERM", shutdownCleanup);
-process.on("exit", shutdownCleanup);
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
-// LOGIN BOT
-client.login(TOKEN);                                       // Log in to Discord
+client.login(TOKEN);
