@@ -1,4 +1,4 @@
-# 🤖 FWD Vocoder Discord Bot
+# 🤖 FWD Vocoder (Discord Bot)
 
 <div align="center">
 
