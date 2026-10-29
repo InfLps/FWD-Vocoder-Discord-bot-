@@ -1,6 +1,6 @@
 /**
  * Discord Bot: FWD Vocoder
- * Author: FWDLps (FWDVERSE)
+ * Author: FWDLps (FWDVERSE FOUNDRY NETWORK)
  */
 
 import {
